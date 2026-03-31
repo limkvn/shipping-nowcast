@@ -44493,18 +44493,19 @@
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Overview</h3>
             <p>
-                This dashboard estimates the causal impact of the Hormuz crisis (onset February 28, 2026) on global trade flows.
-                For each series (chokepoint, port group, or individual port), a <em>counterfactual</em> path is constructed
-                representing what traffic would have looked like absent the crisis. The <em>deviation</em> between the actual
-                observed data and the counterfactual is attributed to the crisis.
+                This dashboard estimates the causal impact of the Iran war crisis (onset February 28, 2026) on global
+                shipping and trade flows. For each series (chokepoint, regional port group, country aggregate, or
+                individual port), a <em>counterfactual</em> path is constructed representing what traffic would have
+                looked like absent the crisis. The <em>deviation</em> between the actual observed data and the
+                counterfactual is attributed to the crisis.
             </p>
             <p>
-                Data comes from IMF PortWatch, which aggregates AIS (Automatic Identification System) satellite vessel tracking
-                data. Daily counts and capacity for five vessel types (tanker, container, dry bulk, general cargo, and RoRo)
-                are aggregated to weekly frequency to smooth day-of-week effects while preserving timely signal.
-                Weeks run Monday through Sunday, with each week labeled by its Monday start date.
-                Within each week, values represent the daily average (not the sum), and incomplete trailing weeks
-                (fewer than 5 days of data) are dropped to avoid partial-week distortions.
+                Data comes from IMF PortWatch, which aggregates AIS (Automatic Identification System) satellite vessel
+                tracking data. Daily counts and capacity (deadweight tonnage) for five vessel types (tanker, container,
+                dry bulk, general cargo, and RoRo) are aggregated to weekly frequency to smooth day-of-week effects
+                while preserving timely signal. Weeks run Monday through Sunday, with each week labeled by its Monday
+                start date. Within each week, values represent the daily average (not the sum), and incomplete trailing
+                weeks (fewer than 5 days of data) are dropped to avoid partial-week distortions.
             </p>
             <p>
                 A clean resampling boundary is enforced at the crisis date: pre-crisis and post-crisis daily data are
@@ -44515,36 +44516,44 @@
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Counterfactual Construction (Multiplicative via Log-Space STL)</h3>
             <p>
-                The decomposition is estimated in <strong>log space</strong> to ensure counterfactuals are always non-negative
-                (trade flows cannot be negative). Each series is first transformed via <code>log1p(x)</code>, then STL is applied
-                additively in log space, and the counterfactual is converted back via <code>expm1()</code>. This is equivalent
-                to a multiplicative model in level space:
+                The decomposition is estimated in <strong>log space</strong> to ensure counterfactuals are always
+                non-negative (trade flows cannot be negative). Each series is first transformed via
+                <code>log1p(x)</code>, then STL is applied additively in log space, and the counterfactual is converted
+                back via <code>expm1()</code>. This is equivalent to a multiplicative model in level space:
             </p>
             <p style="text-align:center; font-family: monospace; font-size: 1rem; color: #f9fafb; margin: 1rem 0;">
-                counterfactual(t) = expm1( trend(t) + seasonal(t) + remainder(t) )
+                counterfactual(t) = expm1( trend(t) + seasonal(t) + predicted_remainder(t) )
             </p>
             <p>
                 The <code>log1p</code>/<code>expm1</code> pair handles zeros gracefully (<code>log1p(0) = 0</code>,
-                <code>expm1(0) = 0</code>). Log-space is applied when at least 10% of the series is strictly positive
-                and all values are non-negative. A final <code>clip(lower=0)</code> is applied as a hard floor.
+                <code>expm1(0) = 0</code>). Log-space is applied when all values are non-negative and at least 10%
+                of the series is strictly positive. A final <code>clip(lower=0)</code> is applied as a hard floor.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Step 1: STL Decomposition</h3>
             <p>
-                Each log-transformed weekly series is decomposed using STL (Seasonal-Trend decomposition using LOESS) with period=52
-                (annual seasonality) and a seasonal smoother window of s=13, which provides quarterly-scale seasonal smoothing &mdash;
-                responsive enough to capture evolving seasonal patterns without overfitting year-to-year noise. Robust mode is
-                enabled to downweight outliers.
-                <strong>Critically, the STL is estimated on pre-crisis data only</strong> to prevent the crisis-period
-                collapse from contaminating the seasonal and trend estimates. Post-crisis seasonal values are projected
-                forward by matching ISO calendar weeks to their 3-year historical average from the pre-crisis seasonal, then
-                smoothed with a 5-week circular moving average to prevent implausible week-on-week spikes in the counterfactual.
+                Each log-transformed weekly series is decomposed using STL (Seasonal-Trend decomposition using LOESS)
+                with <code>period=52</code> (annual seasonality), <code>seasonal=13</code> (quarterly-scale seasonal
+                smoothing window), and <code>robust=True</code> to downweight outliers. The seasonal smoother at
+                s=13 is responsive enough to capture evolving seasonal patterns without overfitting year-to-year noise.
+            </p>
+            <p>
+                <strong>Critically, the STL is estimated on pre-crisis data only</strong> (June 2019 through February
+                27, 2026) to prevent the crisis-period collapse from contaminating the seasonal and trend estimates.
+                Post-crisis seasonal values are projected forward using a seasonal week-lookup table: for each ISO
+                calendar week, the table stores the average of that week&rsquo;s seasonal values from the most recent
+                3 years of pre-crisis data. This raw lookup is then smoothed with a <strong>5-week circular moving
+                average</strong> (half-window=2, wrapping around the 52-week boundary) to prevent implausible
+                week-on-week spikes in the counterfactual caused by STL seasonal overfitting to individual years.
+            </p>
+            <p>
                 This produces three components (all in log space):
             </p>
             <ul>
-                <li><strong>Trend:</strong> The slow-moving structural level of the series in log space (e.g., gradual growth in Hormuz traffic
-                    as Asian demand rises, or the step-down in Bab el-Mandeb after the 2024 Houthi disruption).</li>
-                <li><strong>Seasonal:</strong> The repeating annual cycle in log space (e.g., higher tanker traffic in winter months
+                <li><strong>Trend:</strong> The slow-moving structural level of the series (e.g., gradual growth in
+                    Hormuz traffic as Asian demand rises, or the step-down in Bab el-Mandeb after the 2024 Houthi
+                    disruption).</li>
+                <li><strong>Seasonal:</strong> The repeating annual cycle (e.g., higher tanker traffic in winter months
                     due to heating oil demand, lower in spring shoulder season).</li>
                 <li><strong>Remainder:</strong> Everything left over &mdash; short-run fluctuations driven by economic
                     conditions, oil market dynamics, weather events, and noise.</li>
@@ -44552,71 +44561,87 @@
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Step 2: Trend Extrapolation</h3>
             <p>
-                To project the trend into the post-crisis period, a linear regression is fitted to the last 13 weeks
-                of pre-crisis trend values. This captures the recent trajectory (rising, falling, or flat) and extends
-                it forward at the same slope. The 13-week window balances responsiveness to recent shifts against
-                stability. For the short post-crisis horizons here (3 weeks), the choice of extrapolation method
-                has minimal impact &mdash; linear, constant, or quadratic all produce nearly identical results.
+                To project the trend into the post-crisis period, a linear regression (<code>np.polyfit</code>, degree 1)
+                is fitted to the last 13 weeks of pre-crisis trend values in log space. This captures the recent
+                trajectory (rising, falling, or flat) and extends it forward at the same slope. The 13-week window
+                balances responsiveness to recent shifts against stability. For the short post-crisis horizons here
+                (~4 weeks), the choice of extrapolation method has minimal impact.
             </p>
 
-            <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Step 3: Seasonal Component</h3>
+            <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Step 3: Seasonal Projection</h3>
             <p>
-                The STL-estimated seasonal value for each calendar week is carried directly into the counterfactual.
-                If week 10 historically tends to see 5 more tankers than average (e.g., due to seasonal refinery maintenance
-                schedules), that +5 is added to the counterfactual regardless of the crisis.
+                The smoothed seasonal week-lookup table (described in Step 1) maps each post-crisis calendar week to
+                its expected seasonal value in log space. Because the lookup is built from a 3-year average and then
+                smoothed with a 5-week circular moving average, week-to-week transitions are gentle and the
+                counterfactual avoids jagged seasonal artifacts.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Step 4: Remainder Prediction (RidgeCV + AR Lags + Fourier Harmonics + Geographic Cross-Features)</h3>
             <p>
-                After removing trend and seasonal, the leftover remainder captures short-run dynamics. A RidgeCV regression
-                (leave-one-out cross-validation over alphas 0.01&ndash;100, features standardized) is fitted on the pre-crisis
-                training window to predict the remainder from five groups of features:
+                After removing trend and seasonal, the leftover remainder captures short-run dynamics. A RidgeCV
+                regression (leave-one-out cross-validation over alphas [0.01, 0.1, 0.5, 1, 5, 10, 50, 100], R&sup2;
+                scoring, features standardized to zero mean and unit variance) is fitted on the pre-crisis training
+                window to predict the remainder from five groups of features:
             </p>
             <ul>
-                <li><strong>Macro controls (monthly):</strong> US industrial production, IMF energy and non-fuel commodity
-                    price indices, commercial &amp; industrial loans, vehicle sales, capacity utilization, plus OPEC/Gulf
-                    oil production estimates. Forward-filled to weekly frequency.</li>
-                <li><strong>Financial controls (daily):</strong> USD broad index, fed funds rate, US economic policy uncertainty,
-                    breakeven inflation (frozen at last pre-crisis values in the primary model). In the sensitivity model,
-                    live daily financial variables (Brent crude, WTI, Henry Hub natural gas, high-yield credit spreads)
-                    are also included to capture financial market reactions.</li>
-                <li><strong>Fourier harmonics:</strong> Sine/cosine pairs at annual (52-week), semi-annual (26-week), and
-                    quarterly (13-week) periods. These deterministic calendar features give the remainder model a second
-                    chance to capture sub-annual periodicities and seasonal harmonics that the single STL pass may miss
-                    (e.g., quarterly contract-timing cycles, semi-annual refinery turnaround schedules).</li>
-                <li><strong>AR(2) lags:</strong> The remainder&rsquo;s own values at lag-1 and lag-2, capturing
-                    week-to-week momentum (autocorrelation) in the residual.</li>
-                <li><strong>Geographic cross-features:</strong> STL remainder of upstream &ldquo;feeder&rdquo; chokepoints,
-                    both contemporaneous (t) and lagged (t&minus;1). These capture the propagation of shipping flow shocks
-                    through the global network. For example, the Strait of Hormuz remainder is used as a predictor for
-                    Suez Canal, Cape of Good Hope, and downstream Asian ports; the Malacca Strait remainder feeds into
-                    Singapore, East Asian, and Southeast Asian models. A geographic linkage map defines which chokepoints
-                    inform each target. Like AR lags, cross-features are frozen at their last pre-crisis values to prevent
-                    crisis-period contamination. See &ldquo;Geographic Cross-Series Features&rdquo; below for details.</li>
+                <li><strong>Frozen monthly macro controls (14):</strong> Gulf/Hormuz oil production, OPEC total
+                    production, world petroleum production (all EIA); US industrial production; US capacity utilization;
+                    vehicle sales; commercial &amp; industrial loans; IMF energy price index; IMF non-fuel commodity
+                    index; China imports; China exports; consumer sentiment; retail sales; and Global Economic Policy
+                    Uncertainty (EPU) index. All forward-filled to weekly frequency and frozen at their last pre-crisis
+                    values.</li>
+                <li><strong>Frozen daily/weekly controls (8):</strong> USD broad index, federal funds rate, US EPU,
+                    10-year breakeven inflation, VIX, yield curve (10Y&minus;2Y), 4-week average initial jobless claims,
+                    and weekly gasoline supplied. Averaged to weekly frequency and frozen at last pre-crisis values.</li>
+                <li><strong>Fourier harmonics (6 features):</strong> Sine/cosine pairs at annual (52-week), semi-annual
+                    (26-week), and quarterly (13-week) periods, computed as
+                    <code>sin/cos(2&pi; &times; day_of_year / period_days)</code>. These deterministic calendar features
+                    give the remainder model a second chance to capture sub-annual periodicities that the single STL
+                    seasonal pass may miss (e.g., quarterly contract-timing cycles, semi-annual refinery turnaround
+                    schedules).</li>
+                <li><strong>AR(2) lags (2 features):</strong> The remainder&rsquo;s own values at lag-1 and lag-2,
+                    capturing week-to-week momentum (autocorrelation) in the residual. Frozen at their last pre-crisis
+                    values post-crisis.</li>
+                <li><strong>Geographic cross-features (0&ndash;6 features):</strong> STL remainder of upstream
+                    &ldquo;feeder&rdquo; chokepoints, both contemporaneous (t) and lagged (t&minus;1). These capture
+                    the propagation of shipping flow shocks through the global network. For example, the Strait of
+                    Hormuz remainder is used as a predictor for Suez Canal, Cape of Good Hope, and downstream Asian
+                    ports; the Malacca Strait remainder feeds into Singapore, East Asian, and Southeast Asian models.
+                    A geographic linkage map defines which chokepoints inform each target (up to 3 feeders &times; 2
+                    lags = up to 6 cross-features). Like AR lags, all cross-features are frozen at their last
+                    pre-crisis values to prevent crisis-period contamination. See &ldquo;Geographic Cross-Series
+                    Features&rdquo; below for details.</li>
             </ul>
+            <p>
+                Total feature count per model: ~30&ndash;36 (14 monthly + 8 daily + 6 Fourier + 2 AR lags + 0&ndash;6
+                geographic cross-features). A minimum of 20 pre-crisis observations is required for the Ridge
+                regression to be fitted.
+            </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Step 5: Freezing Controls Post-Crisis</h3>
             <p>
-                The central design choice: all control variables and AR lags are <strong>frozen</strong> at their last
-                pre-crisis values when projecting the counterfactual forward. This means the counterfactual answers
-                &ldquo;what would have happened if economic conditions and shipping momentum had continued as they were
-                immediately before the crisis?&rdquo; Without freezing, crisis-period shocks (collapsing tanker counts,
-                surging oil prices) would feed back through the AR lags and live controls into the counterfactual,
-                shrinking the estimated deviation toward zero.
+                The central design choice: all control variables, AR lags, and geographic cross-features are
+                <strong>frozen</strong> at their last pre-crisis values when projecting the counterfactual forward.
+                This means the counterfactual answers &ldquo;what would have happened if economic conditions and
+                shipping momentum had continued as they were immediately before the crisis?&rdquo; Without freezing,
+                crisis-period shocks (collapsing tanker counts, surging oil prices) would feed back through the AR
+                lags and live controls into the counterfactual, shrinking the estimated deviation toward zero.
             </p>
             <p>
-                The sensitivity model relaxes this for daily financial variables, allowing Brent, WTI, Henry Hub, and
-                credit spreads to update live. This captures an alternative scenario where financial market movements
-                since the crisis would have affected shipping volumes even absent the physical disruption.
+                The sensitivity model relaxes this for a subset of daily financial variables, allowing Brent crude,
+                WTI, Henry Hub natural gas, high-yield credit spreads, and BDRY/FRO shipping indices to update live.
+                This captures an alternative scenario where financial market movements since the crisis would have
+                affected shipping volumes even absent the physical disruption.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Geographic Cross-Series Features</h3>
             <p>
                 Global shipping flows are interconnected: a disruption at one chokepoint propagates downstream through
-                the network. To capture this, the pipeline uses a two-pass architecture. In the first pass, STL decomposition
-                is run on all 28 chokepoints and the <code>total_count</code> remainder is stored. In the second pass, when
-                fitting the Ridge model for any target series (chokepoint, region, country, or individual port), the remainders
-                of geographically upstream &ldquo;feeder&rdquo; chokepoints are included as additional predictors.
+                the network. To capture this, the pipeline uses a <strong>two-pass architecture</strong>. In the first
+                pass, STL decomposition is run on all 28 chokepoints and the <code>total_count</code> remainder is
+                stored. In the second pass, when fitting the Ridge model for any target series (chokepoint, region,
+                country, or individual port), the remainders of geographically upstream &ldquo;feeder&rdquo;
+                chokepoints are included as additional predictors.
             </p>
             <p>
                 The geographic linkage map encodes domain knowledge about shipping network topology:
@@ -44629,39 +44654,75 @@
                 <li><strong>Chokepoint-to-chokepoint:</strong> e.g., Malacca feeds Taiwan Strait, Korea Strait, Lombok, Sunda, Makassar</li>
             </ul>
             <p>
-                For each feeder, two features are added: the contemporaneous remainder (at time t) and the 1-week lag (t&minus;1).
-                Both are frozen at their last pre-crisis values post-crisis, identical to the AR lag treatment.
-                Country-level models use the same map via ISO3 codes (e.g., CHN &rarr; Malacca + Taiwan + Korea Strait).
+                For each feeder, two features are added: the contemporaneous remainder (at time t) and the 1-week lag
+                (t&minus;1). Both are frozen at their last pre-crisis values post-crisis, identical to the AR lag
+                treatment. Country-level models use the same map via ISO3 codes (e.g., CHN &rarr; Malacca + Taiwan
+                Strait + Korea Strait).
             </p>
             <p>
-                In A/B testing, adding cross-features improved the controls R&sup2; in <strong>96% of series</strong> across
-                regions and countries, with a mean &Delta;R&sup2; of +0.08. The largest gains were in downstream regions
-                furthest from the crisis origin (Northwest Europe: +0.35, East Asia: +0.25), where intermediary chokepoint
-                flows carry the strongest propagation signal.
+                In A/B testing, adding cross-features improved the controls R&sup2; in <strong>96% of series</strong>
+                across regions and countries, with a mean &Delta;R&sup2; of +0.08. The largest gains were in downstream
+                regions furthest from the crisis origin (Northwest Europe: +0.35, East Asia: +0.25), where
+                intermediary chokepoint flows carry the strongest propagation signal.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Deviation Calculation</h3>
             <p>
                 The &ldquo;deviation&rdquo; reported throughout this dashboard measures the percentage gap between
-                <em>what actually happened</em> and <em>what the model predicts would have happened absent the crisis</em>.
-                Formally: <span style="font-family:monospace; color:#f9fafb;">deviation = (actual &minus; counterfactual) / |counterfactual| &times; 100%</span>.
-                A deviation of &minus;20% means the observed value is 20% below the counterfactual &mdash; i.e., 20% of
-                expected activity is &ldquo;missing&rdquo; and attributed to the crisis. A positive deviation means activity
-                exceeded the no-crisis baseline (e.g., rerouted cargo arriving at alternative ports).
+                <em>what actually happened</em> and <em>what the model predicts would have happened absent the
+                crisis</em>. The formula depends on the counterfactual value:
+            </p>
+            <ul>
+                <li>If counterfactual &gt; 0:
+                    <span style="font-family:monospace; color:#f9fafb;">deviation = (actual &minus; counterfactual) / counterfactual &times; 100%</span></li>
+                <li>If counterfactual &le; 0 but pre-crisis average &gt; 0:
+                    <span style="font-family:monospace; color:#f9fafb;">deviation = (actual &minus; counterfactual) / pre_crisis_avg &times; 100%</span></li>
+                <li>Otherwise: deviation = 0 (no meaningful baseline)</li>
+            </ul>
+            <p>
+                The &ldquo;pre-crisis average&rdquo; (pre_crisis_avg) is defined as the mean weekly value over the
+                52 weeks immediately preceding the crisis onset. If fewer than 52 pre-crisis weeks are available,
+                the full pre-crisis mean is used instead.
+            </p>
+            <p>
+                A deviation of &minus;20% means the observed value is 20% below the counterfactual &mdash; i.e., 20%
+                of expected activity is &ldquo;missing&rdquo; and attributed to the crisis. A positive deviation means
+                activity exceeded the no-crisis baseline (e.g., rerouted cargo arriving at alternative ports).
                 All deviations are capped at &plusmn;999% to prevent extreme values from distorting comparisons.
             </p>
             <p>
-                All deviation figures in the summary tables and KPI cards refer to the <strong>most recent week</strong>
-                of data, not an average over the full post-crisis period. This avoids contamination from the crisis onset
-                week, during which ships already loaded or in transit could distort the average. The time series charts
-                show the full weekly trajectory for readers who want to see the evolution.
+                All deviation figures in the summary tables and KPI cards refer to the <strong>most recent complete
+                week</strong> of data, not an average over the full post-crisis period. This ensures the dashboard
+                reflects the current state of disruption rather than being diluted by the crisis onset period (when
+                ships already loaded or in transit could distort the picture). The time series charts show the full
+                weekly trajectory for readers who want to see the evolution.
             </p>
             <p>
-                Deviations are computed separately for each of five vessel types: tanker, container, dry bulk, general cargo,
-                and RoRo. The vessel type toggle at the top of the dashboard controls which type is displayed; selecting
-                multiple types shows aggregated port call results where actual and counterfactual values are summed across
-                selected types before computing the deviation percentage.
-                Capacity (deadweight tonnage) is used for chokepoints and import/export tonnage for regional port groups.
+                Deviations are computed separately for each of five vessel types: tanker, container, dry bulk,
+                general cargo, and RoRo. The vessel type toggle at the top of the dashboard controls which type is
+                displayed; selecting multiple types shows aggregated port call results where actual and counterfactual
+                values are summed across selected types before computing the deviation percentage. Capacity (deadweight
+                tonnage) is used for chokepoint metrics; import/export tonnage is used for regional port groups.
+            </p>
+
+            <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Map Marker Filtering</h3>
+            <p>
+                The global deviation map suppresses markers for chokepoint&times;vessel-type combinations with
+                negligible baseline traffic to prevent misleading extreme-percentage markers. Specifically:
+            </p>
+            <ul>
+                <li><strong>Capacity markers:</strong> Suppressed if the pre-crisis average weekly capacity is below
+                    1,000 deadweight tonnes (e.g., RoRo capacity through the Bering Strait).</li>
+                <li><strong>Ship count markers:</strong> Suppressed if the pre-crisis average weekly count is below
+                    2 ships (e.g., container vessels through the Ombai Strait).</li>
+                <li><strong>Port markers:</strong> Suppressed if the pre-crisis average weekly tonnage is below
+                    1,000 tonnes.</li>
+            </ul>
+            <p>
+                When a vessel type has negligible traffic at a chokepoint, the multi-vessel-type aggregation treats
+                it as zero (both actual and counterfactual), so it does not pollute the combined deviation for that
+                location. This filtering only affects map markers &mdash; the KPI summary cards and detail tables
+                continue to show all series.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Multi-Vessel-Type Port Aggregation</h3>
@@ -44673,97 +44734,124 @@
             </p>
             <p>
                 Port-level models are initially run for the top 50 ports by volume for each vessel type independently.
-                However, a port may rank in the top 50 for some vessel types but not others (e.g., Singapore is a top-50
-                tanker port but not a top-50 dry bulk port). To ensure accurate multi-type aggregation, the pipeline
-                runs a second pass that models all missing port&times;vessel-type combinations using a tiered approach:
+                However, a port may rank in the top 50 for some vessel types but not others (e.g., Singapore is a
+                top-50 tanker port but not a top-50 dry bulk port). To ensure accurate multi-type aggregation, the
+                pipeline runs a second pass that models all missing port&times;vessel-type combinations using a
+                tiered approach:
             </p>
             <ul>
-                <li><strong>STL + Ridge</strong> (primary): If the port&rsquo;s weekly series for the missing vessel type
-                    has &ge;104 weeks of data with &ge;30% non-zero values, the full STL decomposition and Ridge regression
-                    pipeline is applied, identical to the top-50 methodology.</li>
+                <li><strong>STL + Ridge</strong> (primary): If the port&rsquo;s weekly series for the missing vessel
+                    type has &ge;104 weeks of data with &ge;30% non-zero values, the full STL decomposition and Ridge
+                    regression pipeline is applied, identical to the top-50 methodology.</li>
                 <li><strong>Naive baseline</strong> (fallback): If the series is too short or sparse for STL, a naive
                     calendar-week-average baseline is used as the counterfactual, with the deviation normalized by the
                     pre-crisis mean.</li>
                 <li><strong>Pre-crisis average</strong> (last resort): If neither STL nor naive is viable (e.g., fewer
-                    than 52 pre-crisis weeks), the pre-crisis weekly average is used as a flat counterfactual.</li>
+                    than 10 pre-crisis weeks of data), the pre-crisis weekly average is used as a flat counterfactual.</li>
             </ul>
             <p>
-                This ensures that when you select all five vessel types, every port&rsquo;s total portcall count includes
-                contributions from all vessel types it serves &mdash; not just the types where it ranked in the top 50.
+                This ensures that when you select all five vessel types, every port&rsquo;s total portcall count
+                includes contributions from all vessel types it serves &mdash; not just the types where it ranked
+                in the top 50.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Naive Baseline &amp; YoY/QoQ Comparisons</h3>
             <p>
                 As a robustness check, a simple naive baseline is also computed for each series. It uses the average
-                of the same ISO calendar weeks from 2023 onward as the counterfactual, and normalizes the deviation by the
-                pre-crisis mean to avoid division-by-zero issues in sparse series.
+                of the same ISO calendar weeks from 2023 onward as the counterfactual, and normalizes the deviation
+                by the pre-crisis mean to avoid division-by-zero issues in sparse series.
             </p>
             <p>
-                The detail tables also include two additional naive comparisons: <strong>vs 1Y ago</strong> (year-over-year,
-                comparing the latest week to the value 52 weeks earlier) and <strong>vs 1Q ago</strong> (quarter-over-quarter,
-                13 weeks earlier). These simple look-back comparisons provide context independent of any model.
+                The detail tables also include two additional naive comparisons: <strong>vs 1Y ago</strong>
+                (year-over-year, comparing the latest week to the value 52 weeks earlier) and <strong>vs 1Q ago</strong>
+                (quarter-over-quarter, 13 weeks earlier). These simple look-back comparisons provide context
+                independent of any model.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Regional Aggregates vs. Per-Port Estimates</h3>
             <p>
-                The dashboard presents two levels of port analysis that are estimated independently and should not be
-                expected to be arithmetically consistent. <strong>Regional port group aggregates</strong> (e.g., &ldquo;East Asian
-                Imports&rdquo;) sum all daily tanker activity across every port in the region, then run a single STL
-                decomposition and Ridge regression on that aggregate series. <strong>Per-port deviations</strong> run STL and
-                Ridge independently on each individual port&rsquo;s weekly series &mdash; each port gets its own trend, seasonal
-                pattern, and remainder regression. Summing the per-port counterfactuals would not reproduce the regional
-                aggregate counterfactual because STL decomposition is nonlinear (the trend of a sum is not the sum of the
-                trends). Additionally, the per-port tables show only the top ports by volume, omitting the long tail of
-                smaller ports that are included in the aggregate. The two levels answer different questions: the aggregate
-                captures total regional disruption, while the per-port breakdown identifies which individual ports are
-                most affected.
+                The dashboard presents two levels of port analysis that are estimated independently and should not
+                be expected to be arithmetically consistent. <strong>Regional port group aggregates</strong> (e.g.,
+                &ldquo;East Asian Imports&rdquo;) sum all daily activity across every port in the region, then run a
+                single STL decomposition and Ridge regression on that aggregate series. <strong>Per-port
+                deviations</strong> run STL and Ridge independently on each individual port&rsquo;s weekly series
+                &mdash; each port gets its own trend, seasonal pattern, and remainder regression. Summing the per-port
+                counterfactuals would not reproduce the regional aggregate counterfactual because STL decomposition
+                is nonlinear (the trend of a sum is not the sum of the trends). Additionally, the per-port tables show
+                only the top ports by volume, omitting the long tail of smaller ports that are included in the
+                aggregate. The two levels answer different questions: the aggregate captures total regional disruption,
+                while the per-port breakdown identifies which individual ports are most affected.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Data Sources</h3>
             <ul>
-                <li><strong>Vessel tracking:</strong> IMF PortWatch (AIS satellite data), daily vessel counts and capacity
-                    for 28 chokepoints and ~2,000 ports globally, covering five vessel types</li>
-                <li><strong>Frozen monthly controls (11):</strong> OPEC/Gulf/World production (EIA), US industrial production,
-                    capacity utilization, vehicle sales, commercial loans, IMF energy &amp; non-fuel commodity indices,
-                    China imports/exports, consumer sentiment, retail sales</li>
-                <li><strong>Frozen daily/weekly controls (8):</strong> USD broad index, fed funds rate, US EPU,
-                    breakeven inflation (10Y), VIX, yield curve (10Y&minus;2Y), initial jobless claims (4-wk avg),
-                    gasoline supplied (weekly)</li>
-                <li><strong>Frozen macro uncertainty:</strong> Global EPU index (monthly)</li>
-                <li><strong>Live daily controls (sensitivity model):</strong> Brent, WTI, Henry Hub, high-yield spread,
-                    BDRY, FRO shipping indices</li>
-                <li><strong>AR lags:</strong> 2 lags of the STL remainder (frozen at last pre-crisis values)</li>
-                <li><strong>Geographic cross-features:</strong> STL remainder (total vessel count) from upstream feeder
-                    chokepoints, contemporaneous + 1-week lag, frozen post-crisis. Up to 3 feeders per target
-                    (&times; 2 lags = up to 6 cross-features per model).</li>
-                <li><strong>Oil production:</strong> EIA &mdash; Gulf state, OPEC,
-                    and world petroleum production estimates</li>
+                <li><strong>Vessel tracking:</strong> IMF PortWatch (AIS satellite data), daily vessel counts and
+                    capacity for 28 chokepoints and ~2,000 ports globally, covering five vessel types.</li>
+                <li><strong>Frozen monthly controls (14):</strong> Gulf/Hormuz oil production, OPEC total production,
+                    world petroleum production (EIA); US industrial production; US capacity utilization; vehicle sales;
+                    commercial &amp; industrial loans; IMF energy price index; IMF non-fuel commodity index;
+                    China imports; China exports; consumer sentiment; retail sales; Global EPU index.</li>
+                <li><strong>Frozen daily/weekly controls (8):</strong> USD broad index, federal funds rate, US EPU,
+                    10-year breakeven inflation, VIX, yield curve (10Y&minus;2Y), 4-week average initial jobless
+                    claims, weekly gasoline supplied.</li>
+                <li><strong>Live daily controls (sensitivity model only, 6):</strong> Brent crude, WTI, Henry Hub
+                    natural gas, high-yield credit spread, BDRY shipping index, FRO shipping index.</li>
+                <li><strong>Fourier harmonics (6):</strong> Sine/cosine pairs at annual (52-week), semi-annual
+                    (26-week), and quarterly (13-week) periods.</li>
+                <li><strong>AR lags (2):</strong> Lag-1 and lag-2 of the STL remainder (frozen at last pre-crisis
+                    values post-crisis).</li>
+                <li><strong>Geographic cross-features (0&ndash;6):</strong> STL remainder (total vessel count) from
+                    upstream feeder chokepoints, contemporaneous + 1-week lag, frozen post-crisis. Up to 3 feeders
+                    per target (&times; 2 lags = up to 6 cross-features per model).</li>
             </ul>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Key Parameters</h3>
             <ul>
-                <li>STL period: 52 weeks (annual). Seasonal smoother window: s=13 (quarterly smoothing). Estimated on pre-crisis data only in log space; seasonal projected forward by calendar-week matching (3-year average, smoothed with 5-week circular moving average).</li>
-                <li>Log-space transformation: <code>log1p(x)</code> applied when &ge;10% of values are positive and all values are non-negative. Counterfactual inverted via <code>expm1()</code> then clamped to &ge;0.</li>
-                <li>RidgeCV regression: alpha selected per series via leave-one-out cross-validation (candidates: 0.01, 0.1, 0.5, 1, 5, 10, 50, 100). ~30&ndash;36 features (22 macro controls + 6 Fourier harmonics + 2 AR lags + 0&ndash;6 geographic cross-features), standardized (zero mean, unit variance).</li>
-                <li>Trend extrapolation: 13-week linear fit on the log-space trend.</li>
-                <li>AR lags: 2 (frozen at last pre-crisis values post-crisis).</li>
-                <li>Crisis onset: February 28, 2026. Training window: June 2019 through February 27, 2026.</li>
-                <li>Weekly aggregation: daily average within Monday-to-Sunday weeks, with separate resampling at the crisis boundary to prevent blending pre- and post-crisis days. Weeks labeled by Monday start date. Trailing weeks with fewer than 5 days of data are dropped.</li>
-                <li>Vessel types: tanker, container, dry bulk, general cargo, and RoRo (select one for per-metric detail; select multiple for aggregated port call view).</li>
-                <li>Minimum data requirement: 104 weeks (2 years) and &ge;30% non-zero for STL; 52 pre-crisis weeks for naive baseline; 10 weeks for pre-crisis-average fallback.</li>
-                <li>Non-top-50 fill: ports appearing in any vessel type&rsquo;s top-50 list receive modeled counterfactuals for all other vessel types via the STL &rarr; naive &rarr; pre-crisis-average fallback hierarchy.</li>
+                <li><strong>STL:</strong> period=52 weeks (annual), seasonal smoother window s=13 (quarterly),
+                    robust=True. Estimated on pre-crisis data only in log space. Seasonal projected forward by
+                    ISO-week matching (3-year average), smoothed with 5-week circular moving average
+                    (half-window=2, wrapping at week 52&rarr;1 boundary).</li>
+                <li><strong>Log-space:</strong> <code>log1p(x)</code> applied when all values &ge;0 and &ge;10% are
+                    strictly positive. Counterfactual inverted via <code>expm1()</code> then clamped to &ge;0.</li>
+                <li><strong>RidgeCV:</strong> Alpha selected per series via leave-one-out cross-validation
+                    (candidates: 0.01, 0.1, 0.5, 1, 5, 10, 50, 100; R&sup2; scoring). ~30&ndash;36 features
+                    (14 monthly + 8 daily + 6 Fourier + 2 AR + 0&ndash;6 cross), standardized (zero mean, unit
+                    variance). Minimum 20 training observations required.</li>
+                <li><strong>Trend extrapolation:</strong> 13-week linear fit (degree-1 polynomial) on the log-space
+                    trend.</li>
+                <li><strong>AR lags:</strong> 2 (frozen at last pre-crisis values post-crisis).</li>
+                <li><strong>Crisis onset:</strong> February 28, 2026. Training window: June 2019 (after STL burn-in)
+                    through February 27, 2026.</li>
+                <li><strong>Weekly aggregation:</strong> Daily average within Monday-to-Sunday weeks, with separate
+                    resampling at the crisis boundary to prevent blending pre- and post-crisis days. Weeks labeled by
+                    Monday start date. Trailing weeks with fewer than 5 days of data are dropped.</li>
+                <li><strong>Vessel types:</strong> Tanker, container, dry bulk, general cargo, and RoRo. Select one
+                    for per-metric detail (ship count + capacity/tonnage); select multiple for aggregated port call
+                    view.</li>
+                <li><strong>Minimum data:</strong> 104 weeks (~2 years) and &ge;30% non-zero for STL; 52 pre-crisis
+                    weeks for naive baseline; 10 weeks for pre-crisis-average fallback. Minimum 20 observations for
+                    Ridge regression.</li>
+                <li><strong>Port fill:</strong> Top 50 ports per vessel type receive full STL+Ridge models. Ports
+                    appearing in any vessel type&rsquo;s top-50 list receive modeled counterfactuals for all other
+                    vessel types via the STL &rarr; naive &rarr; pre-crisis-average fallback hierarchy.</li>
+                <li><strong>Deviation cap:</strong> &plusmn;999%. Map markers additionally filtered by minimum
+                    pre-crisis average traffic (capacity &ge;1,000 DWT; count &ge;2 ships/week; port tonnage
+                    &ge;1,000).</li>
             </ul>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Model Fit: Variance Decomposition</h3>
             <p>
-                For each modeled series the pipeline computes a variance decomposition on the pre-crisis training window
-                using sequential R&sup2;, displayed as a stacked bar beneath each chart. This measures how much of the training-period variance is explained at each stage:
-                <strong>Trend</strong> (R&sup2; of trend alone), <strong>+Seasonal</strong> (R&sup2; of trend + STL seasonal),
-                <strong>+Controls</strong> (R&sup2; of the full model including Fourier harmonics, macro controls, and AR lags),
-                and <strong>Unexplained</strong> (1 &minus; full R&sup2;). Higher unexplained variance means the counterfactual
-                has wider implicit confidence bands. When multiple vessel types are selected, the bar shows a
-                weighted-average decomposition across vessel types, with weights proportional to each type&rsquo;s
-                pre-crisis historical average level.
+                For each modeled series the pipeline computes a variance decomposition on the pre-crisis training
+                window using sequential R&sup2;, displayed as a stacked bar beneath each chart. This measures how
+                much of the training-period variance in the log-transformed series is explained at each stage:
+                <strong>Trend</strong> (R&sup2; of trend alone vs. the original series),
+                <strong>+Seasonal</strong> (R&sup2; of trend + STL seasonal),
+                <strong>+Controls</strong> (R&sup2; of the full model including Ridge-predicted remainder from Fourier
+                harmonics, macro controls, AR lags, and geographic cross-features),
+                and <strong>Unexplained</strong> (1 &minus; full R&sup2;). Higher unexplained variance means the
+                counterfactual has wider implicit confidence bands. When multiple vessel types are selected, the bar
+                shows a weighted-average decomposition across vessel types, with weights proportional to each
+                type&rsquo;s pre-crisis historical average level.
             </p>
 
             <h4 style="color:#d1d5db; margin: 1rem 0 0.5rem 0; font-size: 0.95rem;">Full R&sup2; Distribution by Aggregation Level</h4>
@@ -44781,22 +44869,25 @@
                 </tr></thead>
                 <tbody>
                     <tr><td style="padding:0.3rem;">Chokepoints</td><td style="text-align:right;padding:0.3rem;">308</td><td style="text-align:right;padding:0.3rem;">0.24</td><td style="text-align:right;padding:0.3rem;">0.35</td><td style="text-align:right;padding:0.3rem;">0.49</td><td style="text-align:right;padding:0.3rem;">0.65</td><td style="text-align:right;padding:0.3rem;">0.82</td><td style="text-align:right;padding:0.3rem;">17%</td><td style="text-align:right;padding:0.3rem;">52%</td></tr>
-                    <tr><td style="padding:0.3rem;">Regional Aggregates</td><td style="text-align:right;padding:0.3rem;">242</td><td style="text-align:right;padding:0.3rem;">0.35</td><td style="text-align:right;padding:0.3rem;">0.48</td><td style="text-align:right;padding:0.3rem;">0.62</td><td style="text-align:right;padding:0.3rem;">0.76</td><td style="text-align:right;padding:0.3rem;">0.84</td><td style="text-align:right;padding:0.3rem;">6%</td><td style="text-align:right;padding:0.3rem;">32%</td></tr>
+                    <tr><td style="padding:0.3rem;">Regional Aggregates</td><td style="text-align:right;padding:0.3rem;">198</td><td style="text-align:right;padding:0.3rem;">0.37</td><td style="text-align:right;padding:0.3rem;">0.48</td><td style="text-align:right;padding:0.3rem;">0.63</td><td style="text-align:right;padding:0.3rem;">0.76</td><td style="text-align:right;padding:0.3rem;">0.84</td><td style="text-align:right;padding:0.3rem;">4%</td><td style="text-align:right;padding:0.3rem;">29%</td></tr>
                     <tr><td style="padding:0.3rem;">Countries</td><td style="text-align:right;padding:0.3rem;">1,100</td><td style="text-align:right;padding:0.3rem;">0.25</td><td style="text-align:right;padding:0.3rem;">0.34</td><td style="text-align:right;padding:0.3rem;">0.47</td><td style="text-align:right;padding:0.3rem;">0.63</td><td style="text-align:right;padding:0.3rem;">0.74</td><td style="text-align:right;padding:0.3rem;">16%</td><td style="text-align:right;padding:0.3rem;">56%</td></tr>
-                    <tr><td style="padding:0.3rem;">Top Ports</td><td style="text-align:right;padding:0.3rem;">2,776</td><td style="text-align:right;padding:0.3rem;">0.20</td><td style="text-align:right;padding:0.3rem;">0.29</td><td style="text-align:right;padding:0.3rem;">0.39</td><td style="text-align:right;padding:0.3rem;">0.53</td><td style="text-align:right;padding:0.3rem;">0.66</td><td style="text-align:right;padding:0.3rem;">27%</td><td style="text-align:right;padding:0.3rem;">71%</td></tr>
                 </tbody>
             </table>
+            <p style="font-size:0.8rem; color:#9ca3af; margin-top:-0.5rem;">
+                Note: R&sup2; statistics cover only series with full STL+Ridge models (variance_decomp available).
+                Port-level series using the naive or pre-crisis-average fallback do not produce a variance
+                decomposition and are excluded from this table.
+            </p>
 
             <p>
-                Fit varies systematically by metric type and aggregation level. Port-call series fit
-                substantially better than tonnage series because tonnage depends on vessel size mix, which
-                introduces high-frequency variance that no trend+seasonal model can explain. Aggregated series (regional,
-                median R&sup2;=0.62; country, median 0.47) fit better than individual ports (median 0.39) because aggregation
-                smooths idiosyncratic port-level noise.
-                The controls (macro variables, Fourier harmonics, AR lags, and geographic cross-features) contribute
-                a median of ~5&ndash;7pp of marginal R&sup2; on top of trend and seasonal components, with the geographic
-                cross-features contributing the largest gains for downstream entities (mean &Delta;R&sup2;=+0.08 for regions
-                and countries).
+                Fit varies systematically by metric type and aggregation level. Port-call series fit substantially
+                better than tonnage series because tonnage depends on vessel size mix, which introduces high-frequency
+                variance that no trend+seasonal model can explain. Aggregated series (regional, median R&sup2;=0.63;
+                country, median 0.47) fit better than individual chokepoint-level metrics (median 0.49) because
+                aggregation smooths idiosyncratic noise. The controls (macro variables, Fourier harmonics, AR lags,
+                and geographic cross-features) contribute a median of ~5&ndash;7pp of marginal R&sup2; on top of
+                trend and seasonal components, with the geographic cross-features contributing the largest gains for
+                downstream entities (mean &Delta;R&sup2;=+0.08 for regions and countries).
             </p>
 
         </div>
