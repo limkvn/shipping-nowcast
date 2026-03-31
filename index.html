@@ -1606,6 +1606,14 @@
 
             // Track which layer types are visible
             window._mapLayerVisible = {chokepoints: true, "export": true, "import": true, ports: true};
+
+            // If multi-VT mode is active on load, switch map to multi-VT view
+            if (typeof getSelectedVessels === "function") {
+                var sel = getSelectedVessels();
+                if (sel.length > 1 && typeof updateMapForMulti === "function") {
+                    updateMapForMulti(sel);
+                }
+            }
         }
 
         // Switch map to a different vessel type (called from vessel toggle)
