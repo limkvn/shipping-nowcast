@@ -576,7 +576,7 @@
         </div>
         </div>
 
-        <div class="period-banner"><span class="period-item"><strong>Crisis onset:</strong> Feb 28, 2026</span><span class="period-sep">|</span><span class="period-item"><strong>Deviation reference week:</strong> Mar 16 – Mar 22, 2026</span><span class="period-sep">|</span><span class="period-item">Deviation = % gap between observed and counterfactual (no-crisis) for the most recent complete week</span><span class="period-sep">|</span><span class="period-item" style="opacity:0.5;font-style:italic;">Dimmed values are within normal pre-crisis noise (&lt;2&sigma;) and may not reflect a true crisis signal</span></div>
+        <div class="period-banner"><span class="period-item"><strong>Crisis onset:</strong> Feb 28, 2026</span><span class="period-sep">|</span><span class="period-item"><strong>Deviation reference week:</strong> Mar 16 – Mar 22, 2026</span><span class="period-sep">|</span><span class="period-item">Deviation = % gap between observed and counterfactual (no-crisis) for the most recent complete week</span><span class="period-sep">|</span><span class="period-item" style="opacity:0.5;font-style:italic;">Dimmed values: deviation is within pre-crisis noise (&lt;2&sigma;) for every underlying series. In multi-vessel mode, a value is dimmed only if all selected vessel types are below the threshold.</span></div>
     <div class="seasonal-panel active" data-seasonal="13">
         <div class="vessel-panel active" data-vessel="tanker">
         <div class="kpi-row-label">Chokepoints</div>
@@ -44777,6 +44777,34 @@
                 (year-over-year, comparing the latest week to the value 52 weeks earlier) and <strong>vs 1Q ago</strong>
                 (quarter-over-quarter, 13 weeks earlier). These simple look-back comparisons provide context
                 independent of any model.
+            </p>
+
+            <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Signal-to-Noise Dimming</h3>
+            <p>
+                Not all deviations shown on the dashboard are statistically meaningful. Some series have high
+                pre-crisis residual variance, meaning the model&rsquo;s fit is noisy and a large-looking deviation
+                may fall within the range of normal fluctuation. To help distinguish genuine crisis signals from
+                noise, the dashboard dims values that do not pass a significance threshold.
+            </p>
+            <p>
+                <strong>Threshold:</strong> For each series, the standard deviation (&sigma;) of the pre-crisis
+                residuals (percentage deviations between actual and counterfactual during the training window) is
+                computed. A deviation is considered significant if |deviation| &ge; 2&sigma;. Values below this
+                threshold are displayed at reduced opacity (dimmed) in both the KPI summary cards and detail tables.
+            </p>
+            <p>
+                <strong>Multi-vessel-type mode:</strong> When multiple vessel types are selected, the dashboard
+                aggregates actual and counterfactual values across the selected types before computing the deviation.
+                The significance test, however, is applied per vessel type individually. A metric is dimmed in
+                multi-vessel mode only if <em>all</em> selected vessel types are below the 2&sigma; threshold for
+                that metric. If any single vessel type shows a significant deviation, the aggregated value remains
+                fully visible, since the signal from that vessel type is considered meaningful even if other types
+                are noisy.
+            </p>
+            <p>
+                <strong>Edge cases:</strong> Series with fewer than 20 pre-crisis observations, or where the
+                pre-crisis residual standard deviation is near zero (&lt;0.01%), default to significant (undimmed),
+                since there is insufficient history to estimate the noise band.
             </p>
 
             <h3 style="color:#93c5fd; margin: 1.5rem 0 0.75rem 0; font-size: 1.1rem;">Regional Aggregates vs. Per-Port Estimates</h3>
