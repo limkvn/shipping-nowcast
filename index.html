@@ -1555,7 +1555,7 @@
                 var sigT = (typeof getSigmaThreshold === "function") ? getSigmaThreshold() : 2;
                 function mapSig(item) {
                     if (sigT === 0) return true;
-                    if (item.d == null || item.sg == null) return true;
+                    if (item.d == null || item.sg == null) return false;
                     return Math.abs(item.d) >= sigT * item.sg;
                 }
 
@@ -45914,11 +45914,15 @@ function toggleChartZoom(btn) {
         function multiMapSig(item, selected) {
             var t = getSigmaThreshold();
             if (t === 0) return true;
-            var anySig = false;
+            var anySig = false, anyTestable = false;
             selected.forEach(function(vt) {
-                if (item[vt] && isSig(item[vt])) anySig = true;
+                var e = item[vt];
+                if (!e) return;
+                if (e.d == null || e.sg == null) return;  // skip VTs without significance data
+                anyTestable = true;
+                if (Math.abs(e.d) >= t * e.sg) anySig = true;
             });
-            return anySig;
+            return anyTestable ? anySig : false;  // hide if no VT has testable data
         }
 
         // Aggregate chokepoints
