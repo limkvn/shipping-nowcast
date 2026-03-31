@@ -569,16 +569,16 @@
         <div class="vessel-toggle">
             <span class="toggle-label">Vessel Type:</span>
             <button class="toggle-btn vessel-btn active" data-vessel="tanker">Tanker</button>
-            <button class="toggle-btn vessel-btn" data-vessel="container">Container</button>
-            <button class="toggle-btn vessel-btn" data-vessel="dry_bulk">Dry Bulk</button>
-            <button class="toggle-btn vessel-btn" data-vessel="general_cargo">General Cargo</button>
-            <button class="toggle-btn vessel-btn" data-vessel="roro">RoRo</button>
+            <button class="toggle-btn vessel-btn active" data-vessel="container">Container</button>
+            <button class="toggle-btn vessel-btn active" data-vessel="dry_bulk">Dry Bulk</button>
+            <button class="toggle-btn vessel-btn active" data-vessel="general_cargo">General Cargo</button>
+            <button class="toggle-btn vessel-btn active" data-vessel="roro">RoRo</button>
         </div>
         </div>
 
         <div class="period-banner"><span class="period-item"><strong>Crisis onset:</strong> Feb 28, 2026</span><span class="period-sep">|</span><span class="period-item"><strong>Deviation reference week:</strong> Mar 16 – Mar 22, 2026</span><span class="period-sep">|</span><span class="period-item">Deviation = % gap between observed and counterfactual (no-crisis) for the most recent complete week</span><span class="period-sep">|</span><span class="period-item" style="display:flex;align-items:center;gap:0.5rem;"><span style="font-weight:600;color:#e2e8f0;">Noise filter:</span> <input type="range" id="sigmaSlider" min="0" max="4" step="0.5" value="2" style="width:90px;accent-color:#3b82f6;cursor:pointer;" oninput="document.getElementById('sigmaLabel').textContent=this.value; window._recomputeDimming && window._recomputeDimming();"> <span id="sigmaLabel" style="font-weight:700;color:#93c5fd;min-width:1.5em;text-align:center;">2</span>&sigma;</span><span class="period-sep">|</span><span class="period-item" style="opacity:0.6;font-style:italic;font-size:0.72rem;">Each series has its own &sigma; (std. dev. of pre-crisis model residuals). Deviations smaller than the slider threshold &times; &sigma; are dimmed as likely noise. Slide right to be stricter, left to show more. 0 = no dimming.</span></div>
     <div class="seasonal-panel active" data-seasonal="13">
-        <div class="vessel-panel active" data-vessel="tanker">
+        <div class="vessel-panel" data-vessel="tanker">
         <div class="kpi-row-label">Chokepoints</div>
         <div class="kpi-grid">
             <div class="kpi-card" data-kpi-section="chokepoints">
@@ -1687,7 +1687,7 @@
         </div>
 
     <div class="seasonal-panel" data-seasonal="13">
-        <div class="vessel-panel active" data-vessel="tanker">
+        <div class="vessel-panel" data-vessel="tanker">
         <div class="table-group table-group-ports active">
         <div class="table-section" data-metric-type="counts">
             <h2>Top Tanker Ports — Port Calls Deviation</h2>
@@ -45790,17 +45790,13 @@ function toggleChartZoom(btn) {
     document.querySelectorAll(".seasonal-panel").forEach(function(p) {
         p.classList.toggle("active", p.getAttribute("data-seasonal") == defaultS);
     });
-    // Initialize first vessel panel (tanker) as active
-    document.querySelectorAll(".vessel-panel[data-vessel='tanker']").forEach(function(p) {
-        p.classList.add("active");
-    });
     // Seasonal toggle removed — fixed s=13
 })();
 
 // ── Vessel type toggle (multi-select, global — applies to all seasonal panels) ──
 (function() {
     var VT_LABELS = {tanker:"Tanker",container:"Container",dry_bulk:"Dry Bulk",general_cargo:"General Cargo",roro:"RoRo"};
-    window._selectedVessels = ["tanker"];
+    window._selectedVessels = ["tanker","container","dry_bulk","general_cargo","roro"];
     window._displayVessel = "tanker";
 
     function getSelectedVessels() { return window._selectedVessels; }
@@ -46229,6 +46225,8 @@ function toggleChartZoom(btn) {
             updateVesselView();
         });
     });
+    // Initialize multi-VT view on page load
+    updateVesselView();
 })();
 
 // ── Table section toggle (chokepoints / regional / ports) ──
