@@ -576,7 +576,7 @@
         </div>
         </div>
 
-        <div class="period-banner"><span class="period-item"><strong>Crisis onset:</strong> Feb 28, 2026</span><span class="period-sep">|</span><span class="period-item"><strong>Deviation reference week:</strong> Mar 16 – Mar 22, 2026</span><span class="period-sep">|</span><span class="period-item">Deviation = % gap between observed and counterfactual (no-crisis) for the most recent complete week</span><span class="period-sep">|</span><span class="period-item" style="display:flex;align-items:center;gap:0.5rem;opacity:0.7;font-style:italic;">Noise filter: <input type="range" id="sigmaSlider" min="0" max="4" step="0.5" value="2" style="width:80px;accent-color:#3b82f6;cursor:pointer;" oninput="document.getElementById('sigmaLabel').textContent=this.value; window._recomputeDimming && window._recomputeDimming();"> <span id="sigmaLabel">2</span>&sigma; <span style="font-size:0.65rem;color:#6b7280;">(0 = off)</span></span></div>
+        <div class="period-banner"><span class="period-item"><strong>Crisis onset:</strong> Feb 28, 2026</span><span class="period-sep">|</span><span class="period-item"><strong>Deviation reference week:</strong> Mar 16 – Mar 22, 2026</span><span class="period-sep">|</span><span class="period-item">Deviation = % gap between observed and counterfactual (no-crisis) for the most recent complete week</span><span class="period-sep">|</span><span class="period-item" style="display:flex;align-items:center;gap:0.5rem;"><span style="font-weight:600;color:#e2e8f0;">Noise filter:</span> <input type="range" id="sigmaSlider" min="0" max="4" step="0.5" value="2" style="width:90px;accent-color:#3b82f6;cursor:pointer;" oninput="document.getElementById('sigmaLabel').textContent=this.value; window._recomputeDimming && window._recomputeDimming();"> <span id="sigmaLabel" style="font-weight:700;color:#93c5fd;min-width:1.5em;text-align:center;">2</span>&sigma;</span><span class="period-sep">|</span><span class="period-item" style="opacity:0.6;font-style:italic;font-size:0.72rem;">Dims deviations within pre-crisis model noise. Higher &sigma; = stricter filter (only large deviations shown). 0 = show all. In multi-vessel mode, dimmed only if all selected types are below threshold.</span></div>
     <div class="seasonal-panel active" data-seasonal="13">
         <div class="vessel-panel active" data-vessel="tanker">
         <div class="kpi-row-label">Chokepoints</div>
@@ -44787,19 +44787,30 @@
                 noise, the dashboard dims values that do not pass a significance threshold.
             </p>
             <p>
-                <strong>Threshold:</strong> For each series, the standard deviation (&sigma;) of the pre-crisis
+                <strong>How it works:</strong> For each series, the standard deviation (&sigma;) of the pre-crisis
                 residuals (percentage deviations between actual and counterfactual during the training window) is
-                computed. A deviation is considered significant if |deviation| &ge; 2&sigma;. Values below this
-                threshold are displayed at reduced opacity (dimmed) in both the KPI summary cards and detail tables.
+                computed. A deviation is considered significant if |deviation| &ge; <em>t</em>&sigma;, where
+                <em>t</em> is the threshold set by the <strong>Noise filter</strong> slider in the info bar.
+                Values below this threshold are displayed at reduced opacity (dimmed) in both the KPI summary
+                cards and detail tables.
+            </p>
+            <p>
+                <strong>Interactive threshold:</strong> The slider ranges from 0&sigma; to 4&sigma; in steps of
+                0.5, defaulting to 2&sigma;. At 2&sigma;, roughly the top 5% of pre-crisis fluctuations would
+                exceed the threshold under a normal distribution. Lower values (e.g. 1&sigma;) show more values
+                as significant; higher values (e.g. 3&sigma;) are stricter and dim more aggressively. Setting the
+                slider to 0 disables dimming entirely, showing all deviations at full opacity. Changes apply
+                instantly to both the pre-rendered single-vessel panels and the dynamically aggregated
+                multi-vessel panels.
             </p>
             <p>
                 <strong>Multi-vessel-type mode:</strong> When multiple vessel types are selected, the dashboard
                 aggregates actual and counterfactual values across the selected types before computing the deviation.
                 The significance test, however, is applied per vessel type individually. A metric is dimmed in
-                multi-vessel mode only if <em>all</em> selected vessel types are below the 2&sigma; threshold for
-                that metric. If any single vessel type shows a significant deviation, the aggregated value remains
-                fully visible, since the signal from that vessel type is considered meaningful even if other types
-                are noisy.
+                multi-vessel mode only if <em>all</em> selected vessel types are below the <em>t</em>&sigma;
+                threshold for that metric. If any single vessel type shows a significant deviation, the aggregated
+                value remains fully visible, since the signal from that vessel type is considered meaningful even
+                if other types are noisy.
             </p>
             <p>
                 <strong>Edge cases:</strong> Series with fewer than 20 pre-crisis observations, or where the
