@@ -46314,6 +46314,7 @@ function toggleChartZoom(btn) {
     // Update single-VT KPI sub-rows from data-ta/data-tc attributes
     function updateSingleKpiSubRows() {
         var w = getWeekIdx();
+        var kpiCount = 0, tableCount = 0;
         document.querySelectorAll(".sig-dimmable[data-ta]").forEach(function(el) {
             var taStr = el.getAttribute("data-ta");
             var tcStr = el.getAttribute("data-tc");
@@ -46332,16 +46333,16 @@ function toggleChartZoom(btn) {
             }
             // Update data-dev for sigma dimming
             el.setAttribute("data-dev", Math.round(dev * 100) / 100);
+            if (el.tagName === "TR") tableCount++; else kpiCount++;
         });
+        console.log("[weekSlider] updateSingleKpiSubRows: updated " + kpiCount + " KPI divs, " + tableCount + " table rows (week=" + w + ")");
     }
 
     // Update single-VT table rows using data-ta/data-tc attributes
     function updateSingleTableRows() {
         var w = getWeekIdx();
-        // Find the active vessel panel
-        var activePanel = document.querySelector(".vessel-panel.active");
-        if (!activePanel) return;
-        activePanel.querySelectorAll("tr[data-ta]").forEach(function(row) {
+        // Query all active vessel panels (KPI + table panels both get .active)
+        document.querySelectorAll(".vessel-panel.active tr[data-ta]").forEach(function(row) {
             var taStr = row.getAttribute("data-ta");
             var tcStr = row.getAttribute("data-tc");
             if (!taStr || !tcStr) return;
@@ -46372,6 +46373,7 @@ function toggleChartZoom(btn) {
     // Recompute everything when week slider changes
     window._recomputeWeek = function() {
         var selected = getSelectedVessels();
+        console.log("[weekSlider] _recomputeWeek called, weekIdx=" + getWeekIdx() + ", selected=" + selected.length + " VTs: " + selected.join(","));
         if (selected.length > 1) {
             var multiHtml = buildMultiKpi(selected);
             document.querySelectorAll("[id^=multiKpiGrid_]").forEach(function(el) {
@@ -46381,6 +46383,7 @@ function toggleChartZoom(btn) {
             bindMultiExpandableRows();
             updateMapForMulti(selected);
         } else if (selected.length === 1) {
+            console.log("[weekSlider] single-VT branch, updating KPI sub-rows + table rows + map");
             updateSingleKpiSubRows();
             updateSingleTableRows();
             if (typeof window.updateMapForVessel === "function") {
