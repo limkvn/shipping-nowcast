@@ -1553,7 +1553,7 @@
 
                 // Week-indexed pct: compute deviation from ta/tc at current week
                 function wkPct(item) {
-                    var w = (typeof getWeekIdx === "function") ? getWeekIdx() : -1;
+                    var w = (window._selectedWeekIdx != null) ? window._selectedWeekIdx : (window._postCrisisDates ? window._postCrisisDates.length - 1 : -1);
                     if (w >= 0 && item.ta && item.tc && w < item.ta.length) {
                         var a = item.ta[w], cf = item.tc[w];
                         if (Math.abs(cf) < 0.0001) return 0;
@@ -1563,7 +1563,8 @@
                 }
 
                 // Sigma threshold filter for map markers (week-aware)
-                var sigT = (typeof getSigmaThreshold === "function") ? getSigmaThreshold() : 2;
+                var sigEl = document.getElementById("sigmaSlider");
+                var sigT = sigEl ? parseFloat(sigEl.value) : 2;
                 function mapSig(item) {
                     if (sigT === 0) return true;
                     if (item.sg == null) return false;
