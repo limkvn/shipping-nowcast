@@ -46192,7 +46192,7 @@ function toggleChartZoom(btn) {
             var labels = selected.map(function(v) { return VT_LABELS[v] || v; });
             document.querySelectorAll(".multi-vessel-banner").forEach(function(b) {
                 b.style.display = "block";
-                b.innerHTML = "\u26A0 Multi-vessel mode: showing <strong>" + labels.join(" + ") + "</strong> — aggregated port call / ship count results (capacity not additive across types).";
+                b.innerHTML = "\u26A0 Multi-vessel mode: showing <strong>" + labels.join(" + ") + "</strong> — aggregated port call / ship count results (capacity hidden because DWT is not economically comparable across vessel types).";
             });
             document.querySelectorAll('.table-section[data-metric-type="tonnage"]').forEach(function(s) {
                 s.style.display = "none";
