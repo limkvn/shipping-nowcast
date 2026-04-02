@@ -45893,8 +45893,117 @@ function toggleChartZoom(btn) {
         if (d == null) return true;
         return Math.abs(d) >= t * entry.sg;
     }
+
+    // ── Joint sigma for multi-VT significance ──
+    // Compute empirical std of summed pre-crisis percentage deviations
+    // across selected vessel types from an item with per-VT ts_a/ts_c arrays.
+    var _jointSgCache = {};
+    function computeJointSg(item, selected) {
+        if (!item) return null;
+        var cacheKey = (item.name || "") + "|" + selected.join(",");
+        if (_jointSgCache[cacheKey] !== undefined) return _jointSgCache[cacheKey];
+        var td = window._tableAggData;
+        if (!td || !td.dates) { _jointSgCache[cacheKey] = null; return null; }
+        var crisisIdx = td.dates.length;
+        for (var i = 0; i < td.dates.length; i++) {
+            if (td.dates[i] >= td.crisis) { crisisIdx = i; break; }
+        }
+        if (crisisIdx < 20) { _jointSgCache[cacheKey] = null; return null; }
+        // Compute summed actual/cf per week, then percentage deviation
+        var devs = [];
+        for (var w = 0; w < crisisIdx; w++) {
+            var sumA = 0, sumCf = 0, hasData = false;
+            selected.forEach(function(vt) {
+                var d = item[vt];
+                if (d && d.ts_a && d.ts_c && w < d.ts_a.length) {
+                    sumA += d.ts_a[w] || 0;
+                    sumCf += d.ts_c[w] || 0;
+                    hasData = true;
+                }
+            });
+            if (hasData && Math.abs(sumCf) > 0.0001) {
+                devs.push((sumA - sumCf) / Math.abs(sumCf) * 100);
+            }
+        }
+        if (devs.length < 20) { _jointSgCache[cacheKey] = null; return null; }
+        // Standard deviation
+        var mean = devs.reduce(function(s,v){return s+v;}, 0) / devs.length;
+        var variance = devs.reduce(function(s,v){return s + (v - mean) * (v - mean);}, 0) / devs.length;
+        var sg = Math.sqrt(variance);
+        _jointSgCache[cacheKey] = sg;
+        return sg;
+    }
+
+    // Build lookup from KPI short keys to _tableAggData items (for joint sigma)
+    var _kpiToTableItem = {};
+    function buildKpiLookup() {
+        var td = window._tableAggData;
+        if (!td) return;
+        var map = {
+            hormuz: {list: "chokepoints", match: "Strait of Hormuz"},
+            suez: {list: "chokepoints", match: "Suez Canal"},
+            panama: {list: "chokepoints", match: "Panama Canal"},
+            cape: {list: "chokepoints", match: "Cape of Good Hope"},
+            malacca: {list: "chokepoints", match: "Malacca Strait"},
+            gulf: {list: "regional_exp", match: "Persian Gulf"},
+            na: {list: "regional_exp", match: "North America"},
+            ea: {list: "regional_exp", match: "East Asia"},
+            sea: {list: "regional_exp", match: "Southeast Asia"},
+            latam: {list: "regional_exp", match: "Latin America"},
+            sgp: {list: "country_exp", match: "Singapore"},
+            my: {list: "country_exp", match: "Malaysia"},
+            th: {list: "country_exp", match: "Thailand"},
+            id: {list: "country_exp", match: "Indonesia"},
+            ph: {list: "country_exp", match: "Philippines"}
+        };
+        for (var key in map) {
+            var spec = map[key];
+            var items = td[spec.list];
+            if (!items) continue;
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].name && items[i].name.indexOf(spec.match) !== -1) {
+                    _kpiToTableItem[key] = items[i];
+                    break;
+                }
+            }
+        }
+    }
+    buildKpiLookup();
+
+    // Joint significance test for multi-VT mode
+    function jointSig(item, selected) {
+        var sg = computeJointSg(item, selected);
+        if (sg == null || sg < 0.01) return true;
+        var t = getSigmaThreshold();
+        if (t === 0) return true;
+        // Compute current aggregated deviation
+        var w = getWeekIdx();
+        var td = window._tableAggData;
+        var crisisIdx = 0;
+        if (td && td.dates) {
+            for (var i = 0; i < td.dates.length; i++) {
+                if (td.dates[i] >= td.crisis) { crisisIdx = i; break; }
+            }
+        }
+        var tsIdx = crisisIdx + w;
+        var sumA = 0, sumCf = 0;
+        selected.forEach(function(vt) {
+            var d = item[vt];
+            if (d && d.ts_a && d.ts_c && tsIdx < d.ts_a.length) {
+                sumA += d.ts_a[tsIdx] || 0;
+                sumCf += d.ts_c[tsIdx] || 0;
+            }
+        });
+        if (Math.abs(sumCf) < 0.0001) return true;
+        var dev = (sumA - sumCf) / Math.abs(sumCf) * 100;
+        return Math.abs(dev) >= t * sg;
+    }
+
     function aggSig(dataByVt, field, selected) {
-        // Significant if ANY selected VT is significant for this metric
+        // Joint significance: compute empirical sigma on summed pre-crisis residuals
+        var tableItem = _kpiToTableItem[field];
+        if (tableItem) return jointSig(tableItem, selected);
+        // Fallback: significant if ANY selected VT is significant
         var anySig = false;
         selected.forEach(function(vt) {
             if (dataByVt[vt] && dataByVt[vt][field] && isSig(dataByVt[vt][field])) anySig = true;
@@ -45955,20 +46064,51 @@ function toggleChartZoom(btn) {
         }
         function markerSize(pct) { return Math.max(4, Math.min(18, 4 + Math.abs(pct) / 8)); }
 
-        // Sigma threshold filter: marker is significant if ANY selected VT is significant
+        // Sigma threshold filter using joint sigma on summed pre-crisis residuals.
+        // Looks up full time series from _tableAggData for empirical joint sigma.
+        var _mapTableLookup = {};
+        function getMapTableItem(item) {
+            var key = item.name || item.port || "";
+            if (_mapTableLookup[key] !== undefined) return _mapTableLookup[key];
+            var td = window._tableAggData;
+            if (!td) { _mapTableLookup[key] = null; return null; }
+            // Try chokepoints
+            if (item.name && td.chokepoints) {
+                for (var i = 0; i < td.chokepoints.length; i++) {
+                    if (td.chokepoints[i].name === item.name) { _mapTableLookup[key] = td.chokepoints[i]; return td.chokepoints[i]; }
+                }
+            }
+            // Try ports
+            if (td.ports) {
+                var searchName = item.port || item.name;
+                for (var i = 0; i < td.ports.length; i++) {
+                    if (td.ports[i].name === searchName) { _mapTableLookup[key] = td.ports[i]; return td.ports[i]; }
+                }
+            }
+            _mapTableLookup[key] = null;
+            return null;
+        }
         function multiMapSig(item, selected) {
             var t = getSigmaThreshold();
             if (t === 0) return true;
-            var anySig = false, anyTestable = false;
+            // Try joint sigma from _tableAggData
+            var tableItem = getMapTableItem(item);
+            if (tableItem) return jointSig(tableItem, selected);
+            // Fallback: independence approximation from per-VT sg values
+            var sumA = 0, sumCf = 0, sumVar = 0, anyTestable = false;
             selected.forEach(function(vt) {
                 var e = item[vt];
                 if (!e || e.sg == null) return;
-                var d = weekDev(e);
-                if (d == null) return;
                 anyTestable = true;
-                if (Math.abs(d) >= t * e.sg) anySig = true;
+                sumA += weekA(e); sumCf += weekCf(e);
+                var absCf = Math.abs(weekCf(e));
+                sumVar += Math.pow(e.sg / 100 * absCf, 2);
             });
-            return anyTestable ? anySig : false;
+            if (!anyTestable || Math.abs(sumCf) < 0.0001) return false;
+            var jointSgAbs = Math.sqrt(sumVar);
+            var jointSgPct = jointSgAbs / Math.abs(sumCf) * 100;
+            var dev = (sumA - sumCf) / Math.abs(sumCf) * 100;
+            return Math.abs(dev) >= t * jointSgPct;
         }
 
         // Aggregate chokepoints
@@ -46060,7 +46200,7 @@ function toggleChartZoom(btn) {
         // Uses selected week index to pick values from time series arrays
         var w = getWeekIdx();
         var tsIdx = getTableCrisisIdx() + w;  // index into ts_a/ts_c arrays
-        var sumA = 0, sumCf = 0, sumA1y = 0, sumA1q = 0, sumAvg = 0, anySig = false;
+        var sumA = 0, sumCf = 0, sumA1y = 0, sumA1q = 0, sumAvg = 0;
         selected.forEach(function(vt) {
             var d = entries[vt];
             if (!d) return;
@@ -46069,12 +46209,13 @@ function toggleChartZoom(btn) {
             var cf = (d.ts_c && tsIdx < d.ts_c.length) ? d.ts_c[tsIdx] : (d.cf || 0);
             sumA += a; sumCf += cf;
             sumA1y += d.a1y||0; sumA1q += d.a1q||0; sumAvg += d.avg||0;
-            if (isSig(d)) anySig = true;
         });
+        // Joint significance test on summed series
+        var sig = jointSig(entries, selected);
         var dev = Math.abs(sumCf) < 0.001 ? null : (sumA - sumCf) / Math.abs(sumCf) * 100;
         var yoy = Math.abs(sumA1y) < 0.001 ? null : (sumA - sumA1y) / Math.abs(sumA1y) * 100;
         var qoq = Math.abs(sumA1q) < 0.001 ? null : (sumA - sumA1q) / Math.abs(sumA1q) * 100;
-        return {a: sumA, cf: sumCf, avg: sumAvg, dev: dev, yoy: yoy, qoq: qoq, sig: anySig};
+        return {a: sumA, cf: sumCf, avg: sumAvg, dev: dev, yoy: yoy, qoq: qoq, sig: sig};
     }
 
     function aggTimeSeries(item, selected) {
